@@ -2,8 +2,6 @@
 
 A browser-based demo platform that uses the **Anthropic Claude API** to accelerate legacy data estate modernization. Paste legacy SQL and get production-ready PySpark in seconds. Map source schemas to target schemas with AI-generated column mappings, confidence scores, and transform expressions.
 
-![AI Data Migrator screenshot](https://raw.githubusercontent.com/YOUR_USERNAME/ai-data-migrator/main/screenshot.png)
-
 ---
 
 ## Features
