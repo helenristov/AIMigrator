@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Data Migrator — Legacy SQL to PySpark Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #ffffff;
+      --bg2:       #f7f7f5;
+      --bg3:       #f0efe9;
+      --border:    rgba(0,0,0,0.10);
+      --border2:   rgba(0,0,0,0.18);
+      --text:      #1a1a1a;
+      --text2:     #6b6b6b;
+      --text3:     #999;
+      --blue:      #185FA5;
+      --blue-bg:   #E6F1FB;
+      --blue-text: #0C447C;
+      --green:     #0F6E56;
+      --green-bg:  #E1F5EE;
+      --green-text:#085041;
+      --amber-bg:  #FAEEDA;
+      --amber-text:#633806;
+      --red-bg:    #FCEBEB;
+      --red-text:  #791F1F;
+      --success-bg:#EAF3DE;
+      --success-text:#27500A;
+      --radius:    8px;
+      --radius-lg: 12px;
+      --mono:      'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      --sans:      -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:        #1a1a1a;
+        --bg2:       #222222;
+        --bg3:       #2a2a2a;
+        --border:    rgba(255,255,255,0.10);
+        --border2:   rgba(255,255,255,0.18);
+        --text:      #e8e8e8;
+        --text2:     #999;
+        --text3:     #666;
+        --blue-bg:   #0c2a44;
+        --blue-text: #85B7EB;
+        --green-bg:  #0a2e24;
+        --green-text:#5DCAA5;
+        --amber-bg:  #2e1f08;
+        --amber-text:#FAC775;
+        --red-bg:    #2e1010;
+        --red-text:  #F09595;
+        --success-bg:#152408;
+        --success-text:#97C459;
+      }
+    }
+
+    body { font-family: var(--sans); background: var(--bg3); color: var(--text); min-height: 100vh; }
+
+    /* ── Layout ── */
+    .shell { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    /* ── Top bar ── */
+    .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 0.5px solid var(--border); }
+    .logo { width: 36px; height: 36px; background: var(--blue); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .logo svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .brand-name { font-size: 16px; font-weight: 600; }
+    .brand-sub  { font-size: 12px; color: var(--text2); margin-top: 1px; }
+    .powered    { margin-left: auto; background: var(--blue-bg); color: var(--blue-text); font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 500; white-space: nowrap; }
+
+    /* ── API Key banner ── */
+    .api-banner { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .api-banner label { font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .api-banner input { flex: 1; min-width: 220px; font-family: var(--mono); font-size: 12px; padding: 7px 10px; border: 0.5px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; }
+    .api-banner input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(24,95,165,0.15); }
+    .api-note { font-size: 11px; color: var(--text2); }
+    .api-note a { color: var(--blue); text-decoration: none; }
+    .api-note a:hover { text-decoration: underline; }
+    .key-status { font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 500; white-space: nowrap; }
+    .key-set   { background: var(--success-bg); color: var(--success-text); }
+    .key-unset { background: var(--amber-bg); color: var(--amber-text); }
+
+    /* ── Metrics ── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+    .met { background: var(--bg2); border-radius: var(--radius); padding: 11px 14px; }
+    .met-v { font-size: 22px; font-weight: 600; }
+    .met-l { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+    /* ── Nav tabs ── */
+    .nav { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 0.5px solid var(--border); padding-bottom: 0; }
+    .nav-tab { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 16px; font-size: 13px; font-weight: 400; color: var(--text2); cursor: pointer; font-family: var(--sans); display: flex; align-items: center; gap: 6px; transition: all 0.12s; margin-bottom: -0.5px; }
+    .nav-tab:hover { color: var(--text); }
+    .nav-tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 500; }
+    .nav-tab svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ── Tab panels ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Chips ── */
+    .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; align-items: center; }
+    .chip-label { font-size: 11px; color: var(--text2); }
+    .chip { background: transparent; border: 0.5px solid var(--border2); border-radius: 20px; padding: 4px 11px; font-size: 11px; color: var(--text2); cursor: pointer; font-family: var(--sans); transition: all 0.12s; }
+    .chip:hover { background: var(--bg2); color: var(--text); border-color: var(--border2); }
+
+    /* ── Two-col workspace ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+    @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .metrics { grid-template-columns: repeat(2,1fr); } }
+
+    /* ── Panel ── */
+    .panel { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 0.5px solid var(--border); background: var(--bg2); flex-shrink: 0; }
+    .panel-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }
+    .lbadge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .lbadge-sql   { background: var(--amber-bg); color: var(--amber-text); }
+    .lbadge-spark { background: var(--green-bg); color: var(--green-text); }
+    .lbadge-src   { background: var(--amber-bg); color: var(--amber-text); }
+    .lbadge-tgt   { background: var(--blue-bg);  color: var(--blue-text);  }
+
+    textarea.code-in { width: 100%; flex: 1; min-height: 200px; border: none; background: transparent; font-family: var(--mono); font-size: 12px; color: var(--text); resize: none; padding: 14px; outline: none; line-height: 1.65; }
+    .output-box { flex: 1; min-height: 200px; padding: 14px; font-family: var(--mono); font-size: 12px; color: var(--text); line-height: 1.65; white-space: pre-wrap; word-break: break-word; overflow-y: auto; }
+    .output-ph { color: var(--text3); font-style: italic; font-family: var(--sans); font-size: 13px; }
+
+    .ctrl-bar { padding: 10px 14px; border-top: 0.5px solid var(--border); display: flex; align-items: center; gap: 8px; background: var(--bg2); flex-shrink: 0; flex-wrap: wrap; }
+
+    /* ── Buttons ── */
+    .btn-blue  { background: var(--blue);  color: #fff; border: none; border-radius: var(--radius); padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: var(--sans); transition: opacity .15s; }
+    .btn-green { background: var(--green); color: #fff; border: none; border-radius: var(--radius); padding: 8px 16px; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: var(--sans); transition: opacity .15s; }
+    .btn-blue:hover, .btn-green:hover { opacity: .88; }
+    .btn-blue:disabled, .btn-green:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-sec { background: transparent; color: var(--text2); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 7px 12px; font-size: 12px; cursor: pointer; font-family: var(--sans); }
+    .btn-sec:hover { background: var(--bg3); }
+    .btn-del { background: transparent; border: none; color: var(--text3); cursor: pointer; padding: 2px 6px; font-size: 14px; line-height: 1; }
+    .btn-del:hover { color: var(--red-text); }
+
+    /* ── Analysis cards ── */
+    .analysis-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 10px; }
+    @media (max-width:700px) { .analysis-grid { grid-template-columns: 1fr; } }
+    .a-card { background: var(--bg2); border-radius: var(--radius); padding: 11px 13px; border: 0.5px solid var(--border); }
+    .a-card h4 { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+    .a-card li { font-size: 12px; color: var(--text); padding: 2px 0; display: flex; align-items: flex-start; gap: 6px; list-style: none; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+    .d-blue { background: var(--blue); } .d-green { background: var(--green); } .d-amber { background: #BA7517; }
+
+    /* ── Complexity ── */
+    .cplx-row { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .cplx-lbl { font-size: 11px; color: var(--text2); }
+    .cdot { width: 7px; height: 7px; border-radius: 50%; background: var(--border2); }
+    .cdot.on { background: var(--blue); }
+
+    /* ── Mapping table ── */
+    .mapping-wrap { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 10px; overflow-x: auto; }
+    .map-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; min-width: 620px; }
+    .map-table th { padding: 9px 11px; text-align: left; font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; background: var(--bg2); border-bottom: 0.5px solid var(--border); }
+    .map-table td { padding: 9px 11px; border-bottom: 0.5px solid var(--border); color: var(--text); vertical-align: middle; }
+    .map-table tr:last-child td { border-bottom: none; }
+    .map-table tr:hover td { background: var(--bg2); }
+    .type-tag { font-family: var(--mono); font-size: 10px; color: var(--text2); background: var(--bg2); padding: 1px 5px; border-radius: 4px; border: 0.5px solid var(--border); }
+    .conf-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+    .c-hi  { background: var(--success-bg); color: var(--success-text); }
+    .c-med { background: var(--amber-bg);   color: var(--amber-text); }
+    .c-lo  { background: var(--red-bg);     color: var(--red-text); }
+
+    /* ── Export ── */
+    .export-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+    .export-lbl { font-size: 12px; color: var(--text2); }
+    .export-out { display: none; background: var(--bg2); border-radius: var(--radius); padding: 14px; font-family: var(--mono); font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; border: 0.5px solid var(--border); }
+
+    /* ── Unmapped ── */
+    .unmapped-row { margin-top: 8px; }
+    .unmapped-lbl { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+    .unmapped-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .uchip { background: var(--red-bg); color: var(--red-text); font-size: 11px; padding: 2px 9px; border-radius: 10px; font-family: var(--mono); }
+
+    /* ── History ── */
+    .hist-empty { color: var(--text3); font-style: italic; font-size: 13px; padding: 32px; text-align: center; }
+    .hist-item { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 13px 15px; margin-bottom: 8px; }
+    .hist-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .hist-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .hist-sql    { background: var(--amber-bg); color: var(--amber-text); }
+    .hist-schema { background: var(--green-bg); color: var(--green-text); }
+    .hist-time { font-size: 11px; color: var(--text3); margin-left: auto; }
+    .hist-preview { font-family: var(--mono); font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Status / spinner ── */
+    .stat-bar { font-size: 11px; color: var(--text2); margin-left: auto; }
+    .spinner { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-ph { color: var(--text3); font-style: italic; font-size: 13px; padding: 24px; text-align: center; }
+
+    /* ── Map summary mini-metrics ── */
+    .mini-metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 10px; }
+    .mini-met { background: var(--bg2); border-radius: var(--radius); padding: 10px 12px; }
+    .mini-met-v { font-size: 18px; font-weight: 600; }
+    .mini-met-l { font-size: 11px; color: var(--text2); margin-top: 1px; }
+
+    /* ── Footer ── */
+    footer { margin-top: 40px; padding-top: 16px; border-top: 0.5px solid var(--border); font-size: 11px; color: var(--text3); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+    footer a { color: var(--blue); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">AI Data Migrator</div>
+      <div class="brand-sub">Legacy SQL → PySpark modernization platform</div>
+    </div>
+    <div class="powered">Powered by Claude</div>
+  </div>
+
+  <!-- API Key -->
+  <div class="api-banner">
+    <label for="api-key-input">Anthropic API key</label>
+    <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." oninput="updateKeyStatus()" />
+    <span class="key-status key-unset" id="key-status">Not set</span>
+    <span class="api-note">
+      Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.
+      Your key is never stored — it lives only in this browser session.
+    </span>
+  </div>
+
+  <!-- Session metrics -->
+  <div class="metrics">
+    <div class="met"><div class="met-v" id="m-conv">0</div><div class="met-l">Queries converted</div></div>
+    <div class="met"><div class="met-v" id="m-mapped">0</div><div class="met-l">Schemas mapped</div></div>
+    <div class="met"><div class="met-v" id="m-time">—</div><div class="met-l">Avg. AI response</div></div>
+    <div class="met"><div class="met-v" id="m-saved">0%</div><div class="met-l">Effort saved</div></div>
+  </div>
+
+  <!-- Nav -->
+  <div class="nav">
+    <button class="nav-tab active" onclick="switchTab('sql', this)">
+      <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      SQL converter
+    </button>
+    <button class="nav-tab" onclick="switchTab('schema', this)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Schema mapper
+    </button>
+    <button class="nav-tab" onclick="switchTab('history', this)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Session history
+    </button>
+  </div>
+
+  <!-- ═══ TAB: SQL CONVERTER ═══ -->
+  <div class="tab-panel active" id="tab-sql">
+    <div class="chip-row">
+      <span class="chip-label">Examples:</span>
+      <button class="chip" onclick="loadSqlEx('window')">Window functions</button>
+      <button class="chip" onclick="loadSqlEx('cte')">CTE + joins</button>
+      <button class="chip" onclick="loadSqlEx('pivot')">PIVOT / CASE WHEN</button>
+      <button class="chip" onclick="loadSqlEx('incremental')">Incremental load</button>
+      <button class="chip" onclick="loadSqlEx('nested')">Nested subqueries</button>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Legacy SQL</span>
+          <span class="lbadge lbadge-sql">SQL</span>
+        </div>
+        <textarea class="code-in" id="sql-in" placeholder="-- Paste legacy SQL or pick an example above
+
+SELECT customer_id,
+  SUM(order_total) AS lifetime_value
+FROM orders
+WHERE status = 'completed'
+GROUP BY customer_id
+HAVING SUM(order_total) > 1000
+ORDER BY lifetime_value DESC
+LIMIT 100;"></textarea>
+        <div class="ctrl-bar">
+          <button class="btn-blue" id="sql-btn" onclick="runSQL()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            Convert to PySpark
+          </button>
+          <button class="btn-sec" onclick="clearSQL()">Clear</button>
+          <div class="cplx-row" id="cplx-row" style="display:none">
+            <span class="cplx-lbl">Complexity</span>
+            <div style="display:flex;gap:3px" id="cplx-dots"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">PySpark output</span>
+          <span class="lbadge lbadge-spark">PySpark</span>
+        </div>
+        <div class="output-box" id="sql-out"><span class="output-ph">PySpark code will appear here after conversion...</span></div>
+        <div class="ctrl-bar" id="sql-out-ctrl" style="display:none">
+          <button class="btn-sec" onclick="copyText('sql-out', this)">Copy code</button>
+          <div class="stat-bar" id="sql-stat"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="analysis-grid" id="sql-analysis" style="display:none">
+      <div class="a-card"><h4>Patterns detected</h4><ul id="pat-list"></ul></div>
+      <div class="a-card"><h4>Optimizations applied</h4><ul id="opt-list"></ul></div>
+      <div class="a-card"><h4>Migration notes</h4><ul id="note-list"></ul></div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: SCHEMA MAPPER ═══ -->
+  <div class="tab-panel" id="tab-schema">
+    <div class="chip-row">
+      <span class="chip-label">Examples:</span>
+      <button class="chip" onclick="loadSchEx('crm')">CRM migration</button>
+      <button class="chip" onclick="loadSchEx('finance')">Finance tables</button>
+      <button class="chip" onclick="loadSchEx('iot')">IoT / events</button>
+      <button class="chip" onclick="loadSchEx('ecommerce')">E-commerce orders</button>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Source schema</span>
+          <span class="lbadge lbadge-src">Legacy / on-prem</span>
+        </div>
+        <textarea class="code-in" id="src-in" placeholder="Paste source DDL or column definitions...
+
+CUST_ID         NUMBER(10)
+CUST_NM         VARCHAR2(100)
+DOB             DATE
+ACCT_BAL        DECIMAL(15,2)
+CREAT_DT        TIMESTAMP
+STATUS_CD       CHAR(1)"></textarea>
+        <div class="ctrl-bar">
+          <button class="btn-green" id="map-btn" onclick="runMapping()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            Generate mappings
+          </button>
+          <button class="btn-sec" onclick="clearSchema()">Clear</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Target schema</span>
+          <span class="lbadge lbadge-tgt">Delta Lake / Spark</span>
+        </div>
+        <textarea class="code-in" id="tgt-in" placeholder="Paste target DDL or column definitions...
+
+customer_id     BIGINT
+customer_name   STRING
+date_of_birth   DATE
+account_balance DOUBLE
+created_at      TIMESTAMP
+is_active       BOOLEAN"></textarea>
+        <div class="ctrl-bar" style="justify-content:flex-end">
+          <span style="font-size:11px;color:var(--text2)">Target schema</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="map-summary" style="display:none">
+      <div class="mini-metrics">
+        <div class="mini-met"><div class="mini-met-v" id="ms-total">0</div><div class="mini-met-l">Total columns</div></div>
+        <div class="mini-met"><div class="mini-met-v" id="ms-auto">0</div><div class="mini-met-l">Auto-mapped</div></div>
+        <div class="mini-met"><div class="mini-met-v" id="ms-tx">0</div><div class="mini-met-l">With transforms</div></div>
+        <div class="mini-met"><div class="mini-met-v" id="ms-rev">0</div><div class="mini-met-l">Needs review</div></div>
+      </div>
+    </div>
+
+    <div class="mapping-wrap">
+      <div class="status-ph" id="map-ph">Mapping results will appear here after generation...</div>
+      <table class="map-table" id="map-tbl" style="display:none">
+        <thead><tr>
+          <th style="width:16%">Source column</th>
+          <th style="width:12%">Source type</th>
+          <th style="width:4%;text-align:center"></th>
+          <th style="width:16%">Target column</th>
+          <th style="width:12%">Target type</th>
+          <th style="width:10%">Confidence</th>
+          <th style="width:22%">Transform</th>
+          <th style="width:8%"></th>
+        </tr></thead>
+        <tbody id="map-body"></tbody>
+      </table>
+    </div>
+
+    <div id="unmapped-wrap" style="display:none" class="unmapped-row">
+      <div class="unmapped-lbl">Unmatched target columns</div>
+      <div class="unmapped-chips" id="unmapped-out"></div>
+    </div>
+
+    <div id="export-wrap" style="display:none;margin-top:14px">
+      <div class="export-row">
+        <span class="export-lbl">Export as:</span>
+        <button class="btn-sec" onclick="doExport('pyspark')">PySpark rename script</button>
+        <button class="btn-sec" onclick="doExport('yaml')">YAML mapping spec</button>
+        <button class="btn-sec" onclick="doExport('sql')">SQL SELECT statement</button>
+      </div>
+      <div class="export-out" id="export-out"></div>
+    </div>
+  </div>
+
+  <!-- ═══ TAB: HISTORY ═══ -->
+  <div class="tab-panel" id="tab-history">
+    <div id="hist-empty" class="hist-empty">No activity yet — convert a query or map a schema to see history here.</div>
+    <div id="hist-list"></div>
+  </div>
+
+  <footer>
+    <span>AI Data Migrator &mdash; demo powered by the <a href="https://docs.anthropic.com/en/api/getting-started" target="_blank">Anthropic API</a></span>
+    <span><a href="https://github.com" target="_blank">View on GitHub</a> &middot; MIT License</span>
+  </footer>
+
+</div>
+
+<script src="examples.js"></script>
+<script>
+  /* ── State ── */
+  let sessionConv = 0, sessionMapped = 0, totalMs = 0, totalOps = 0, currentMappings = [];
+
+  /* ── API key ── */
+  function getKey() { return document.getElementById('api-key-input').value.trim(); }
+  function updateKeyStatus() {
+    const k = getKey();
+    const el = document.getElementById('key-status');
+    el.textContent = k ? 'Key set' : 'Not set';
+    el.className = 'key-status ' + (k ? 'key-set' : 'key-unset');
+  }
+
+  /* ── Tab switching ── */
+  function switchTab(id, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  /* ── Example loaders ── */
+  function loadSqlEx(k) {
+    document.getElementById('sql-in').value = SQL_EXAMPLES[k] || '';
+    clearSQLOut();
+  }
+  function loadSchEx(k) {
+    document.getElementById('src-in').value = SCHEMA_EXAMPLES[k].src || '';
+    document.getElementById('tgt-in').value = SCHEMA_EXAMPLES[k].tgt || '';
+    clearMapOut();
+  }
+
+  /* ── Clear helpers ── */
+  function clearSQL() { document.getElementById('sql-in').value = ''; clearSQLOut(); }
+  function clearSQLOut() {
+    document.getElementById('sql-out').innerHTML = '<span class="output-ph">PySpark code will appear here after conversion...</span>';
+    document.getElementById('sql-out-ctrl').style.display = 'none';
+    document.getElementById('sql-analysis').style.display = 'none';
+    document.getElementById('cplx-row').style.display = 'none';
+  }
+  function clearSchema() { document.getElementById('src-in').value = ''; document.getElementById('tgt-in').value = ''; clearMapOut(); }
+  function clearMapOut() {
+    document.getElementById('map-ph').style.display = 'block';
+    document.getElementById('map-ph').textContent = 'Mapping results will appear here after generation...';
+    document.getElementById('map-tbl').style.display = 'none';
+    document.getElementById('map-summary').style.display = 'none';
+    document.getElementById('unmapped-wrap').style.display = 'none';
+    document.getElementById('export-wrap').style.display = 'none';
+    document.getElementById('export-out').style.display = 'none';
+    currentMappings = [];
+  }
+
+  /* ── Metrics ── */
+  function updateMetrics() {
+    document.getElementById('m-conv').textContent = sessionConv;
+    document.getElementById('m-mapped').textContent = sessionMapped;
+    document.getElementById('m-time').textContent = totalOps > 0 ? (totalMs / totalOps / 1000).toFixed(1) + 's' : '—';
+    document.getElementById('m-saved').textContent = Math.min(90, 55 + (sessionConv + sessionMapped) * 4) + '%';
+  }
+
+  /* ── History ── */
+  function addHistory(type, preview) {
+    document.getElementById('hist-empty').style.display = 'none';
+    const item = document.createElement('div');
+    item.className = 'hist-item';
+    item.innerHTML = `
+      <div class="hist-head">
+        <span class="hist-badge ${type === 'sql' ? 'hist-sql' : 'hist-schema'}">${type === 'sql' ? 'SQL → PySpark' : 'Schema mapping'}</span>
+        <span class="hist-time">${new Date().toLocaleTimeString()}</span>
+      </div>
+      <div class="hist-preview">${preview.slice(0, 100)}</div>`;
+    document.getElementById('hist-list').insertBefore(item, document.getElementById('hist-list').firstChild);
+  }
+
+  /* ── Claude API call ── */
+  async function callClaude(system, userMsg) {
+    const key = getKey();
+    if (!key) throw new Error('No API key set — enter your Anthropic API key above.');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-calls': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2048, system, messages: [{ role: 'user', content: userMsg }] })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `API error ${res.status}`);
+    }
+    const data = await res.json();
+    return data.content.map(b => b.text || '').join('');
+  }
+
+  /* ── SQL Converter ── */
+  async function runSQL() {
+    const sql = document.getElementById('sql-in').value.trim();
+    if (!sql) return alert('Please paste some SQL first.');
+    const btn = document.getElementById('sql-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Converting...';
+    clearSQLOut();
+    document.getElementById('sql-out').innerHTML = '<span class="output-ph">Analyzing SQL patterns...</span>';
+    const t0 = Date.now();
+
+    const system = `You are an expert data engineer specializing in migrating legacy SQL to PySpark. Respond ONLY with valid JSON (no markdown fences, no extra text):
+{"pyspark_code":"full PySpark code with \\n for newlines","complexity":1,"patterns":["p1","p2","p3"],"optimizations":["o1","o2","o3"],"notes":["n1","n2","n3"]}
+PySpark rules: SparkSession as 'spark', use F. prefix (from pyspark.sql import functions as F), add inline comments, use pyspark.sql.Window for window funcs, include all imports at top, end with .show() or .write. Complexity 1-5 integer.`;
+
+    try {
+      const raw = await callClaude(system, 'Translate this SQL to PySpark:\n\n' + sql);
+      const elapsed = Date.now() - t0;
+      totalMs += elapsed; totalOps++;
+      let p;
+      try { p = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
+      catch { p = { pyspark_code: raw, complexity: 2, patterns: [], optimizations: [], notes: [] }; }
+
+      document.getElementById('sql-out').className = 'output-box';
+      document.getElementById('sql-out').textContent = p.pyspark_code || raw;
+      const lines = (p.pyspark_code || '').split('\n').length;
+      document.getElementById('sql-stat').textContent = lines + ' lines · ' + (elapsed / 1000).toFixed(1) + 's';
+      document.getElementById('sql-out-ctrl').style.display = 'flex';
+
+      const cx = p.complexity || 2;
+      const dd = document.getElementById('cplx-dots'); dd.innerHTML = '';
+      for (let i = 1; i <= 5; i++) dd.innerHTML += `<div class="cdot${i <= cx ? ' on' : ''}"></div>`;
+      document.getElementById('cplx-row').style.display = 'flex';
+
+      function rl(id, items, dc) {
+        document.getElementById(id).innerHTML = (items || []).slice(0, 4).map(x => `<li><span class="dot ${dc}"></span>${x}</li>`).join('');
+      }
+      rl('pat-list', p.patterns, 'd-blue');
+      rl('opt-list', p.optimizations, 'd-green');
+      rl('note-list', p.notes, 'd-amber');
+      document.getElementById('sql-analysis').style.display = 'grid';
+
+      sessionConv++; updateMetrics();
+      addHistory('sql', sql.split('\n')[0]);
+    } catch (e) {
+      document.getElementById('sql-out').className = 'output-box';
+      document.getElementById('sql-out').textContent = '// Error: ' + e.message;
+      document.getElementById('sql-out-ctrl').style.display = 'flex';
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Convert to PySpark';
+  }
+
+  /* ── Schema Mapper ── */
+  async function runMapping() {
+    const src = document.getElementById('src-in').value.trim();
+    const tgt = document.getElementById('tgt-in').value.trim();
+    if (!src || !tgt) return alert('Please fill in both source and target schemas.');
+    const btn = document.getElementById('map-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Analyzing...';
+    clearMapOut();
+    document.getElementById('map-ph').textContent = 'AI is analyzing schemas and generating mappings...';
+    const t0 = Date.now();
+
+    const system = `You are a data engineering expert specializing in schema migrations. Respond ONLY with valid JSON (no markdown fences):
+{"mappings":[{"source_col":"X","source_type":"T","target_col":"Y","target_type":"T","confidence":"high|medium|low","transform":"spark_expr_using_x_as_placeholder_or_null"}],"unmapped_targets":["col"]}
+Match by name similarity and semantic meaning. confidence: high=clear match, medium=likely, low=uncertain. transform: null if direct rename, else concise Spark/SQL expression using 'x' as the column placeholder. Include ALL source columns.`;
+
+    try {
+      const raw = await callClaude(system, 'Source schema:\n' + src + '\n\nTarget schema:\n' + tgt);
+      const elapsed = Date.now() - t0;
+      totalMs += elapsed; totalOps++;
+      let p;
+      try { p = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
+      catch { p = { mappings: [], unmapped_targets: [] }; }
+
+      currentMappings = p.mappings || [];
+      renderMappings(currentMappings, p.unmapped_targets || []);
+      sessionMapped++; updateMetrics();
+      addHistory('schema', src.split('\n')[0]);
+    } catch (e) {
+      document.getElementById('map-ph').textContent = 'Error: ' + e.message;
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg> Generate mappings';
+  }
+
+  function renderMappings(maps, unmapped) {
+    const body = document.getElementById('map-body'); body.innerHTML = '';
+    let mapped = 0, tx = 0;
+    maps.forEach((m, i) => {
+      if (m.target_col) mapped++;
+      if (m.transform && m.transform !== 'direct' && m.transform !== 'null' && m.transform !== null) tx++;
+      const cc = m.confidence === 'high' ? 'c-hi' : m.confidence === 'medium' ? 'c-med' : 'c-lo';
+      const txt = (!m.transform || m.transform === 'null' || m.transform === 'direct' || m.transform === null) ? '—' : m.transform;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-family:var(--mono);font-size:11px">${m.source_col || '—'}</td>
+        <td><span class="type-tag">${m.source_type || '?'}</span></td>
+        <td style="text-align:center;color:var(--text3)">→</td>
+        <td style="font-family:var(--mono);font-size:11px;color:${m.target_col ? 'var(--text)' : 'var(--red-text)'}">${m.target_col || 'no match'}</td>
+        <td><span class="type-tag">${m.target_type || '—'}</span></td>
+        <td><span class="conf-pill ${cc}">${m.confidence || '?'}</span></td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${txt}</td>
+        <td><button class="btn-del" onclick="delRow(${i})">✕</button></td>`;
+      body.appendChild(tr);
+    });
+    document.getElementById('map-ph').style.display = 'none';
+    document.getElementById('map-tbl').style.display = 'table';
+    document.getElementById('ms-total').textContent = maps.length;
+    document.getElementById('ms-auto').textContent = mapped;
+    document.getElementById('ms-tx').textContent = tx;
+    document.getElementById('ms-rev').textContent = (maps.length - mapped) + unmapped.length;
+    document.getElementById('map-summary').style.display = 'block';
+    if (unmapped.length) {
+      document.getElementById('unmapped-out').innerHTML = unmapped.map(u => `<span class="uchip">${u}</span>`).join('');
+      document.getElementById('unmapped-wrap').style.display = 'block';
+    }
+    document.getElementById('export-wrap').style.display = 'block';
+  }
+
+  function delRow(i) { currentMappings.splice(i, 1); renderMappings(currentMappings, []); }
+
+  function doExport(fmt) {
+    const out = document.getElementById('export-out');
+    out.style.display = 'block';
+    const maps = currentMappings.filter(m => m.target_col);
+    if (fmt === 'pyspark') {
+      let c = 'from pyspark.sql import functions as F\n\ndf_mapped = df_source \\\n';
+      maps.forEach((m, i) => {
+        const hasT = m.transform && m.transform !== 'direct' && m.transform !== 'null' && m.transform !== null;
+        c += (hasT ? `    .withColumn("${m.target_col}", F.expr("${m.transform.replace(/x/g, m.source_col)}"))` : `    .withColumnRenamed("${m.source_col}", "${m.target_col}")`);
+        c += i < maps.length - 1 ? ' \\\n' : '\n';
+      });
+      out.textContent = c;
+    } else if (fmt === 'yaml') {
+      let y = 'schema_mapping:\n  version: "1.0"\n  mappings:\n';
+      maps.forEach(m => {
+        y += `    - source: ${m.source_col}\n      target: ${m.target_col}\n      confidence: ${m.confidence}\n`;
+        if (m.transform && m.transform !== 'direct' && m.transform !== 'null' && m.transform !== null)
+          y += `      transform: "${m.transform}"\n`;
+      });
+      out.textContent = y;
+    } else {
+      let s = 'SELECT\n';
+      maps.forEach((m, i) => {
+        const hasT = m.transform && m.transform !== 'direct' && m.transform !== 'null' && m.transform !== null;
+        s += (hasT ? `  ${m.transform.replace(/x/g, m.source_col)} AS ${m.target_col}` : `  ${m.source_col} AS ${m.target_col}`);
+        s += i < maps.length - 1 ? ',\n' : '\n';
+      });
+      s += 'FROM source_table;';
+      out.textContent = s;
+    }
+  }
+
+  /* ── Copy helper ── */
+  function copyText(id, btn) {
+    navigator.clipboard.writeText(document.getElementById(id).textContent).catch(() => {});
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy code', 1600);
+  }
+</script>
+</body>
+</html>
